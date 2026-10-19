@@ -26,6 +26,15 @@ export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
       const audioAsBase64 = audioBuffer.toString('base64')
 
       const transcription = await transcribeAudio(audioAsBase64, audio.mimetype)
+
+      if (!transcription || !transcription.trim()) {
+        return reply.status(200).send({
+          chunkId: null,
+          transcription: '',
+          message: 'Chunk processado sem fala detectada.',
+        })
+      }
+
       const embeddings = await generateEmbeddings(transcription)
 
       const result = await db
@@ -43,7 +52,10 @@ export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
         throw new Error('Erro ao salvar chunk de áudio')
       }
 
-      return reply.status(201).send({ chunkId: chunk.id })
+      return reply.status(201).send({
+        chunkId: chunk.id,
+        transcription,
+      })
     }
   )
 }
