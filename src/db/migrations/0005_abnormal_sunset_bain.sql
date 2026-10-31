@@ -1,0 +1,1 @@
+ALTER TABLE "audio_chunks" ADD COLUMN "source" text DEFAULT 'mixed' NOT NULL;

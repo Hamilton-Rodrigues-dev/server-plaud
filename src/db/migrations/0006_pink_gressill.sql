@@ -1,0 +1,1 @@
+CREATE INDEX "audio_chunks_room_created_idx" ON "audio_chunks" USING btree ("room_id","created_at" DESC NULLS LAST);

@@ -22,6 +22,34 @@
       "when": 1751466534855,
       "tag": "0002_quiet_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793235426454,
+      "tag": "0003_uneven_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793236006555,
+      "tag": "0004_groovy_blockbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793245452860,
+      "tag": "0005_abnormal_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793246079640,
+      "tag": "0006_pink_gressill",
+      "breakpoints": true
     }
   ]
 }
