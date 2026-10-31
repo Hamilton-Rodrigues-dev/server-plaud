@@ -15,6 +15,7 @@ import { liveRoute } from './http/routes/live.ts'
 import { knowledgeSourcesRoute } from './http/routes/knowledge-sources.ts'
 import { getRoomsRoute } from './http/routes/get-rooms.ts'
 import { uploadAudioRoute } from './http/routes/upload-audio.ts'
+import { healthRoute } from './http/routes/health.ts'
 
 const app = fastify().withTypeProvider<ZodTypeProvider>()
 
@@ -29,9 +30,7 @@ app.register(fastifyMultipart, {
 app.setSerializerCompiler(serializerCompiler)
 app.setValidatorCompiler(validatorCompiler)
 
-app.get('/health', () => {
-  return 'OK'
-})
+app.register(healthRoute)
 
 app.register(getRoomsRoute)
 app.register(createRoomRoute)
