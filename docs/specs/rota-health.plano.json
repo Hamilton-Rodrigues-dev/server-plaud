@@ -1,0 +1,17 @@
+[
+  {
+    "titulo": "Criar src/http/routes/health.ts com a definição da rota",
+    "teste": "src/http/routes/health.test.ts (validar retorno OK)",
+    "commit": "feat(health): cria arquivo de rota dedicado para health"
+  },
+  {
+    "titulo": "Remover definição direta de /health de src/server.ts e registrar o novo plugin",
+    "teste": "npm test (verificar se rota continua acessível)",
+    "commit": "refactor(server): move rota health para arquivo dedicado"
+  },
+  {
+    "titulo": "Criar src/http/routes/health.test.ts e validar o retorno da rota",
+    "teste": "src/http/routes/health.test.ts",
+    "commit": "test(health): adiciona teste unitário para rota health"
+  }
+]
