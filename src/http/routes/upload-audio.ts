@@ -3,6 +3,9 @@ import { z } from 'zod/v4'
 import { db } from '../../db/connection.ts'
 import { schema } from '../../db/schema/index.ts'
 import { generateEmbeddings, transcribeAudio } from '../../services/gemini.ts'
+import { assist } from '../../services/assist.ts'
+import { maybeAnalyzeRoom } from '../../services/insights.ts'
+import { publishLive } from '../../services/live-events.ts'
 
 export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
   app.post(
@@ -12,10 +15,14 @@ export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
         params: z.object({
           roomId: z.string(),
         }),
+        querystring: z.object({
+          source: z.enum(['mic', 'system', 'mixed']).default('mixed'),
+        }),
       },
     },
     async (request, reply) => {
       const { roomId } = request.params
+      const { source } = request.query
       const audio = await request.file()
 
       if (!audio) {
@@ -42,6 +49,7 @@ export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
         .values({
           roomId,
           transcription,
+          source,
           embeddings,
         })
         .returning()
@@ -51,6 +59,12 @@ export const uploadAudioRoute: FastifyPluginCallbackZod = (app) => {
       if (!chunk) {
         throw new Error('Erro ao salvar chunk de áudio')
       }
+
+      // Insights automáticos: roda em segundo plano quando há fala nova suficiente.
+      maybeAnalyzeRoom(roomId)
+
+      publishLive(roomId, { type: 'chunk', text: transcription })
+      assist.handleChunk(roomId, { source, text: transcription, embeddings })
 
       return reply.status(201).send({
         chunkId: chunk.id,
