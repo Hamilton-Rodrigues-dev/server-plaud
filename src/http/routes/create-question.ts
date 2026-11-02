@@ -1,9 +1,33 @@
-import { eq, sql } from 'drizzle-orm'
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod'
 import { z } from 'zod/v4'
 import { db } from '../../db/connection.ts'
 import { schema } from '../../db/schema/index.ts'
-import { generateAnswer, generateEmbeddings } from '../../services/gemini.ts'
+import { generateAnswer } from '../../services/ai.ts'
+import { generateEmbeddings } from '../../services/gemini.ts'
+import { getRoomCodeRoots, searchContext } from '../../services/search.ts'
+
+// Traduz falhas conhecidas da API do Claude em uma mensagem que diz o que fazer.
+function describeAiError(err: unknown) {
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err
+      ? (err as { status?: number }).status
+      : undefined
+  const message = err instanceof Error ? err.message : ''
+
+  if (message.includes('credit balance is too low')) {
+    return 'A conta da Anthropic está sem saldo. Adicione créditos em console.anthropic.com > Plans & Billing e tente novamente.'
+  }
+
+  if (status === 401 || status === 403) {
+    return 'A chave da Anthropic (ANTHROPIC_API_KEY) foi recusada. Confira se está correta no .env do servidor.'
+  }
+
+  if (status === 429) {
+    return 'Limite de uso da API do Claude atingido. Aguarde um pouco e tente novamente.'
+  }
+
+  return 'Houve uma instabilidade temporária na IA ao gerar a resposta. Por favor, tente enviar novamente.'
+}
 
 export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
   app.post(
@@ -25,39 +49,25 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
       let answer: string | null = null
 
       try {
-        const embeddings = await generateEmbeddings(question)
-        const embeddingsAsString = `[${embeddings.join(',')}]`
+        const embeddings = await generateEmbeddings(question, 'RETRIEVAL_QUERY')
+        const [{ meeting, knowledge }, codeRoots] = await Promise.all([
+          searchContext(roomId, question, embeddings),
+          getRoomCodeRoots(roomId),
+        ])
 
-        // Busca até 10 chunks mais relevantes para a pergunta nesta sala
-        const matchedChunks = await db
-          .select({
-            id: schema.audioChunks.id,
-            transcription: schema.audioChunks.transcription,
-            similarity: sql<number>`1 - (${schema.audioChunks.embeddings} <=> ${embeddingsAsString}::vector)`,
-          })
-          .from(schema.audioChunks)
-          .where(eq(schema.audioChunks.roomId, roomId))
-          .orderBy(
-            sql`${schema.audioChunks.embeddings} <=> ${embeddingsAsString}::vector`
-          )
-          .limit(10)
-
-        if (matchedChunks.length === 0) {
+        if (
+          meeting.length === 0 &&
+          knowledge.length === 0 &&
+          codeRoots.length === 0
+        ) {
           answer =
-            'Ainda não há áudios gravados nesta sala. Inicie a gravação no topo da tela para capturar a conversa e fazer perguntas!'
+            'Ainda não há áudios gravados nem fontes de conhecimento nesta sala. Inicie a gravação ou adicione uma fonte para fazer perguntas!'
         } else {
-          // Pega os chunks com similaridade razoável ou utiliza os disponíveis
-          const highSimilarity = matchedChunks.filter((c) => c.similarity > 0.35)
-          const chunksToUse =
-            highSimilarity.length >= 2 ? highSimilarity : matchedChunks
-
-          const transcriptions = chunksToUse.map((c) => c.transcription)
-          answer = await generateAnswer(question, transcriptions)
+          answer = await generateAnswer(question, meeting, knowledge, codeRoots)
         }
       } catch (err: unknown) {
         console.error('Erro ao responder pergunta com IA:', err)
-        answer =
-          'Houve uma instabilidade temporária na IA ao gerar a resposta. Por favor, tente enviar novamente.'
+        answer = describeAiError(err)
       }
 
       const result = await db

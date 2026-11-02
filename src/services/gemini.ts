@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 import { env } from '../env.ts'
 
-const gemini = new GoogleGenAI({
+export const gemini = new GoogleGenAI({
   apiKey: env.GEMINI_API_KEY,
 })
 
@@ -14,7 +14,7 @@ const FLASH_MODELS = [
 ]
 
 // biome-ignore lint/suspicious/noExplicitAny: Aceita array de conteúdos da API Gemini
-async function generateWithFallback(contents: any[]) {
+export async function generateWithFallback(contents: any[]) {
   let lastError: unknown = null
 
   for (const model of FLASH_MODELS) {
@@ -59,53 +59,76 @@ export async function transcribeAudio(audioAsBase64: string, mimeType: string) {
   }
 }
 
-export async function generateEmbeddings(text: string) {
-  const response = await gemini.models.embedContent({
-    model: 'gemini-embedding-001',
-    contents: [{ text }],
-    config: {
-      taskType: 'RETRIEVAL_DOCUMENT',
-      outputDimensionality: 768,
-    },
-  })
+type EmbeddingTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY'
 
-  if (!response.embeddings?.[0]?.values) {
+// O plano gratuito limita os tokens de embedding por minuto (HTTP 429, com o tempo de espera na mensagem).
+const MAX_RATE_LIMIT_WAIT_MS = 65_000
+
+function readRateLimitWait(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err)
+
+  if (!(message.includes('429') || message.includes('RESOURCE_EXHAUSTED'))) {
+    return null
+  }
+
+  const seconds = /retry in ([\d.]+)s/i.exec(message)?.[1]
+  const waitMs = seconds ? Math.ceil(Number(seconds) * 1000) + 1000 : 35_000
+
+  return Math.min(waitMs, MAX_RATE_LIMIT_WAIT_MS)
+}
+
+export async function generateEmbeddings(
+  text: string,
+  taskType: EmbeddingTask = 'RETRIEVAL_DOCUMENT'
+) {
+  // Uma pergunta ao vivo não pode esperar muito: só 1 nova tentativa.
+  const [embedding] = await generateEmbeddingsBatch([text], taskType, 1)
+
+  if (!embedding) {
     throw new Error('Não foi possível gerar os embeddings.')
   }
 
-  return response.embeddings[0].values
+  return embedding
 }
 
-export async function generateAnswer(
-  question: string,
-  transcriptions: string[]
+export async function generateEmbeddingsBatch(
+  texts: string[],
+  taskType: EmbeddingTask = 'RETRIEVAL_DOCUMENT',
+  maxRetries = 8
 ) {
-  const context = transcriptions.join('\n\n')
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await gemini.models.embedContent({
+        model: 'gemini-embedding-001',
+        contents: texts.map((text) => ({ text })),
+        config: {
+          taskType,
+          outputDimensionality: 768,
+        },
+      })
 
-  const prompt = `
-    Você é o assistente inteligente do Plaud Virtual (assistente de IA para reuniões, chamadas, aulas e anotações de áudio).
-    Com base nas transcrições do áudio gravado fornecidas abaixo, responda à solicitação ou dúvida do usuário com clareza, síntese e boa formatação em português do Brasil.
+      const embeddings = response.embeddings?.map((e) => e.values)
 
-    TRANSCRIÇÕES DO ÁUDIO GRAVADO:
-    """
-    ${context}
-    """
+      if (
+        !embeddings ||
+        embeddings.length !== texts.length ||
+        embeddings.some((values) => !values)
+      ) {
+        throw new Error('Não foi possível gerar os embeddings.')
+      }
 
-    SOLICITAÇÃO DO USUÁRIO:
-    "${question}"
+      return embeddings as number[][]
+    } catch (err: unknown) {
+      const waitMs = readRateLimitWait(err)
 
-    INSTRUÇÕES:
-    - Sintetize as informações com base no que foi falado no áudio;
-    - Se for um pedido de resumo ("resuma", "pontos principais"), faça um resumo estruturado em tópicos dos assuntos abordados;
-    - Se a pergunta for sobre um assunto específico não citado no áudio, explique brevemente o que foi falado nas transcrições e mencione com gentileza que esse ponto específico ainda não apareceu na gravação;
-    - Utilize formatação Markdown (negrito, tópicos, etc.) para facilitar a leitura.
-  `.trim()
+      if (waitMs === null || attempt >= maxRetries) {
+        throw err
+      }
 
-  const text = await generateWithFallback([
-    {
-      text: prompt,
-    },
-  ])
-
-  return text
+      console.warn(
+        `Cota de embeddings do Gemini atingida. Aguardando ${Math.round(waitMs / 1000)}s (tentativa ${attempt + 1}/${maxRetries})...`
+      )
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+    }
+  }
 }

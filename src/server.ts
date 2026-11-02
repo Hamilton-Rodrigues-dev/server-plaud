@@ -10,6 +10,9 @@ import { env } from './env.ts'
 import { createQuestionRoute } from './http/routes/create-question.ts'
 import { createRoomRoute } from './http/routes/create-room.ts'
 import { getRoomQuestions } from './http/routes/get-room-questions.ts'
+import { insightsRoute } from './http/routes/insights.ts'
+import { liveRoute } from './http/routes/live.ts'
+import { knowledgeSourcesRoute } from './http/routes/knowledge-sources.ts'
 import { getRoomsRoute } from './http/routes/get-rooms.ts'
 import { uploadAudioRoute } from './http/routes/upload-audio.ts'
 
@@ -19,7 +22,9 @@ app.register(fastifyCors, {
   origin: true,
 })
 
-app.register(fastifyMultipart)
+app.register(fastifyMultipart, {
+  limits: { fileSize: 300 * 1024 * 1024 },
+})
 
 app.setSerializerCompiler(serializerCompiler)
 app.setValidatorCompiler(validatorCompiler)
@@ -33,5 +38,8 @@ app.register(createRoomRoute)
 app.register(getRoomQuestions)
 app.register(createQuestionRoute)
 app.register(uploadAudioRoute)
+app.register(knowledgeSourcesRoute)
+app.register(insightsRoute)
+app.register(liveRoute)
 
 app.listen({ port: env.PORT })

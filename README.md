@@ -46,6 +46,9 @@ Crie um arquivo `.env` na raiz do projeto:
 ```env
 PORT=3333
 DATABASE_URL=postgresql://docker:docker@localhost:5432/agents
+GEMINI_API_KEY=         # sua chave; transcrição e embeddings
+ANTHROPIC_API_KEY=      # sua chave; respostas (Claude)
+ANTHROPIC_MODEL=claude-sonnet-5-5  # opcional
 ```
 
 ### 4. Instale as dependências
@@ -87,6 +90,12 @@ A API estará disponível em `http://localhost:3333`
 
 - `GET /health` - Health check da aplicação
 - `GET /rooms` - Lista as salas disponíveis
+- `GET/POST /sources` - Biblioteca de conhecimento (POST multipart: `name`, `type`, `file` ou `text`)
+- `DELETE /sources/:id` - Remove uma fonte
+- `GET/POST /rooms/:roomId/sources` e `DELETE /rooms/:roomId/sources/:sourceId` - Liga fontes a uma sala
+- `POST /sources/code` - Indexa uma pasta de código local (`path`, `name`)
+- `GET /rooms/:roomId/insights` - Insights automáticos da reunião
+- `POST /rooms/:roomId/insights/analyze` - Força a análise agora
 
 ---
 
